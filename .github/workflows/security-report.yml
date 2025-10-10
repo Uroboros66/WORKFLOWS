@@ -1,0 +1,30 @@
+name: "📊 Reporte Consolidado de Seguridad .NET"
+
+on:
+  workflow_run:
+    workflows:
+      - "🔍 Análisis Estático de Código .NET"
+      - "📦 Análisis de Dependencias .NET"
+    types:
+      - completed
+  workflow_dispatch:
+
+jobs:
+  consolidate:
+    runs-on: windows-latest
+    steps:
+      - name: "📥 Descargar artefactos"
+        uses: actions/download-artifact@v3
+        with:
+          path: ./reports
+      - name: "📑 Generar informe"
+        run: |
+          mkdir -p docs
+          echo "# 📊 Informe de Seguridad - aspnetcore-realworld-example-app" > docs/security-assessment.md
+          echo "## Resumen de análisis automático" >> docs/security-assessment.md
+          ls ./reports >> docs/security-assessment.md
+      - name: "📤 Subir informe"
+        uses: actions/upload-artifact@v3
+        with:
+          name: security-assessment
+          path: docs/security-assessment.md
