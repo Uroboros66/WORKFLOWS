@@ -1,0 +1,58 @@
+name: "🔍 Análisis Estático de Código .NET"
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  codeql-analysis:
+    name: "CodeQL - Análisis de Seguridad C#"
+    runs-on: windows-latest
+    permissions:
+      security-events: write
+      actions: read
+      contents: read
+    steps:
+      - name: "📥 Checkout"
+        uses: actions/checkout@v4
+
+      - name: "🛠️ Setup .NET"
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 7.0.x
+
+      - name: "🔍 Inicializar CodeQL"
+        uses: github/codeql-action/init@v3
+        with:
+          languages: csharp
+          queries: security-extended,security-and-quality
+          build-mode: manual
+
+      - name: "🏗️ Build .NET"
+        run: |
+          dotnet restore
+          dotnet build --no-restore --configuration Release
+
+      - name: "🔬 Ejecutar CodeQL"
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:csharp"
+
+  security-code-scan:
+    name: "Security Code Scan"
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 7.0.x
+      - name: "Instalar Security Code Scan"
+        run: dotnet tool install --global SecurityCodeScan.VS2019 --version 5.6.6
+      - name: "Ejecutar Security Code Scan"
+        run: |
+          Get-ChildItem -Recurse -Filter "*.csproj" | ForEach-Object {
+            dotnet build $_.FullName --configuration Release /p:SecurityCodeScanEnabled=true
+          }
