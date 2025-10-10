@@ -9,45 +9,126 @@ on:
 
 jobs:
   codeql-analysis:
+    name: "CodeQL - Análisis de Seguridad C#"
     runs-on: windows-latest
     permissions:
       security-events: write
+      actions: read
       contents: read
+    
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+    - name: "📥 Checkout del código"
+      uses: actions/checkout@v4
+      
+    - name: "🛠️ Setup .NET"
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: | 
+          8.x
+          7.x
+          6.x
+          
+    - name: "🛠️ Inicializar CodeQL"
+      uses: github/codeql-action/init@v3
+      with:
+        languages: 'csharp'
+        queries: security-extended,security-and-quality
+        build-mode: manual
+        
+    - name: "🏗️ Restaurar y Compilar"
+      shell: pwsh
+      run: |
+        $sln = Get-ChildItem -Recurse -Filter *.sln | Select-Object -First 1
+        if ($sln) {
+          Write-Host "Usando solución $($sln.FullName)"
+          dotnet restore $sln.FullName
+          dotnet build $sln.FullName --configuration Release
+        } else {
+          $proj = Get-ChildItem -Recurse -Filter *.csproj | Select-Object -First 1
+          if ($proj) {
+            Write-Host "Usando proyecto $($proj.FullName)"
+            dotnet restore $proj.FullName
+            dotnet build $proj.FullName --configuration Release
+          } else {
+            Write-Error "❌ No se encontró ni .sln ni .csproj en el repo."
+            exit 1
+          }
+        }
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 7.0.x
+    - name: "🔬 Ejecutar Análisis CodeQL"
+      uses: github/codeql-action/analyze@v3
+      with:
+        category: "/language:csharp"
 
-      - name: Initialize CodeQL
-        uses: github/codeql-action/init@v3
-        with:
-          languages: csharp
-          queries: security-extended,security-and-quality
-          build-mode: manual
-
-      - name: Restore dependencies
-        run: dotnet restore WORKFLOWS/aspnetcore-realworld-example-app-master/src/Conduit/Conduit.csproj
-
-      - name: Build project
-        run: dotnet build WORKFLOWS/aspnetcore-realworld-example-app-master/src/Conduit/Conduit.csproj --configuration Release
-
-      - name: Run CodeQL analysis
-        uses: github/codeql-action/analyze@v3
+  security-scan-dotnet:
+    name: "Security Code Scan - Análisis C#"
+    runs-on: windows-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.x'
+    - name: "🛡️ Ejecutar Security Code Scan"
+      shell: pwsh
+      run: |
+        $projs = Get-ChildItem -Recurse -Filter *.csproj
+        if ($projs) {
+          foreach ($p in $projs) {
+            Write-Host "Analizando $($p.FullName)"
+            dotnet build $p.FullName --configuration Release /p:SecurityCodeScanEnabled=true
+          }
+        } else {
+          Write-Warning "No se encontraron proyectos .csproj"
+        }
 
   roslyn-analyzers:
+    name: "Analizadores Roslyn - Calidad Código"
     runs-on: windows-latest
+    
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+    - uses: actions/checkout@v4
+    - uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.x'
+    - name: "🔧 Ejecutar Analizadores Roslyn"
+      run: dotnet build --configuration Release --verbosity normal /warnaserror
+    - name: "📝 Ejecutar Análisis de Código"
+      run: dotnet format --verify-no-changes --severity info
+    - name: "💾 Guardar Reporte de Análisis"
+      uses: actions/upload-artifact@v4
+      with:
+        name: roslyn-analysis-results
+        path: bin/Release/
+        retention-days: 7
 
-      - name: Setup .NET
-        uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: 7.0.x
-
-      - name: Run Roslyn Analyzers
-        run: dotnet build WORKFLOWS/aspnetcore-realworld-example-app-master/src/Conduit/Conduit.csproj --configuration Release /warnaserror
+  dotnet-specific-checks:
+    name: "Chequeos Específicos .NET"
+    runs-on: windows-latest
+    
+    steps:
+    - uses: actions/checkout@v4
+    - uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: '8.x'
+    - name: "🔎 Buscar Patrones Peligrosos C#"
+      shell: pwsh
+      run: |
+        $patterns = @{
+          "SqlCommand con concatenación" = 'SqlCommand.*\+'
+          "Command Injection" = 'Process\.Start.*\+'
+          "Path Injection" = 'Path\.Combine.*\+'
+          "Deserialización insegura" = 'BinaryFormatter|SoapFormatter'
+          "Contraseñas hardcodeadas" = 'password.*=.*".*"'
+        }
+        echo "## 🔍 Patrones de Seguridad Encontrados" >> $env:GITHUB_STEP_SUMMARY
+        foreach ($pattern in $patterns.GetEnumerator()) {
+          $results = Select-String -Path "*.cs" -Pattern $pattern.Value
+          if ($results) {
+            echo "### $($pattern.Key):" >> $env:GITHUB_STEP_SUMMARY
+            foreach ($r in $results) {
+              echo "- $($r.Filename):$($r.LineNumber) - $($r.Line.Trim())" >> $env:GITHUB_STEP_SUMMARY
+            }
+            echo "" >> $env:GITHUB_STEP_SUMMARY
+          }
+        }
