@@ -30,10 +30,10 @@ jobs:
           build-mode: manual
 
       - name: Restore dependencies
-        run: dotnet restore src/Conduit/Conduit.csproj
+        run: dotnet restore WORKFLOWS/aspnetcore-realworld-example-app-master/src/Conduit/Conduit.csproj
 
       - name: Build project
-        run: dotnet build src/Conduit/Conduit.csproj --configuration Release
+        run: dotnet build WORKFLOWS/aspnetcore-realworld-example-app-master/src/Conduit/Conduit.csproj --configuration Release
 
       - name: Run CodeQL analysis
         uses: github/codeql-action/analyze@v3
