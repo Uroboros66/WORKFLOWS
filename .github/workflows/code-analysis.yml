@@ -50,4 +50,4 @@ jobs:
           dotnet-version: 7.0.x
 
       - name: Run Roslyn Analyzers
-        run: dotnet build src/Conduit/Conduit.csproj --configuration Release /warnaserror
+        run: dotnet build WORKFLOWS/aspnetcore-realworld-example-app-master/src/Conduit/Conduit.csproj --configuration Release /warnaserror
